@@ -1,0 +1,210 @@
+# =========================
+# 1. 라이브러리 import
+# =========================
+
+import pandas as pd
+import numpy as np
+import joblib
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    classification_report
+)
+
+# =========================
+# 2. CSV 파일 불러오기
+# =========================
+
+print("⏳ CSV 파일 불러오는 중...")
+
+# 본인 CSV 경로로 수정
+csv_path = r"C:\Users\jiwoo\Desktop\top_1000_pe_imports.csv"
+
+df = pd.read_csv(csv_path)
+
+print(f"✅ 데이터 로드 완료")
+print(f"데이터 크기: {df.shape[0]}행, {df.shape[1]}열")
+
+# =========================
+# 3. 필수 컬럼 확인
+# =========================
+
+required_cols = {'hash', 'malware'}
+
+missing = required_cols - set(df.columns)
+
+if missing:
+    raise KeyError(f"필수 컬럼이 없습니다: {missing}")
+
+# =========================
+# 4. 데이터 전처리
+# =========================
+
+print("\n🧹 데이터 전처리 진행 중...")
+
+# 입력 데이터(X), 정답(y)
+X = df.drop(columns=['hash', 'malware'])
+y = df['malware']
+
+# 문자열 라벨 숫자화
+if y.dtype == object or y.dtype.name == 'category':
+    y = y.astype('category').cat.codes
+
+# 결측치 처리
+X = X.fillna(0)
+
+# 문자열 컬럼 자동 인코딩
+non_numeric = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+if non_numeric:
+    print(f"원-핫 인코딩 컬럼 수: {len(non_numeric)}")
+
+    X = pd.get_dummies(
+        X,
+        columns=non_numeric,
+        drop_first=True
+    )
+
+print("✅ 전처리 완료")
+print("최종 데이터 크기:", X.shape)
+
+# =========================
+# 5. 학습/테스트 분리
+# =========================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+print("\n📊 학습 데이터:", X_train.shape)
+print("📊 테스트 데이터:", X_test.shape)
+
+# =========================
+# 6. RandomForest 생성
+# =========================
+
+print("\n🧠 RandomForest 모델 학습 중...")
+
+rf_model = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=20,
+    min_samples_split=5,
+    random_state=42,
+    n_jobs=-1
+)
+
+# =========================
+# 7. 모델 학습
+# =========================
+
+rf_model.fit(X_train, y_train)
+
+print("✅ 모델 학습 완료")
+
+# =========================
+# 8. 예측
+# =========================
+
+y_pred = rf_model.predict(X_test)
+
+# =========================
+# 9. 성능 평가
+# =========================
+
+accuracy = accuracy_score(y_test, y_pred)
+
+print(f"\n🎯 정확도: {accuracy * 100:.2f}%")
+
+# Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+
+print("\n📌 Confusion Matrix")
+print(cm)
+
+# 상세 평가
+print("\n📌 Classification Report")
+print(classification_report(y_test, y_pred))
+
+# =========================
+# 10. 중요 변수 추출
+# =========================
+
+importance_df = pd.DataFrame({
+    'Feature': X.columns,
+    'Importance': rf_model.feature_importances_
+})
+
+importance_df = importance_df.sort_values(
+    by='Importance',
+    ascending=False
+).reset_index(drop=True)
+
+# 상위 30개 변수
+top_30_features = importance_df.head(30)['Feature'].tolist()
+
+print("\n🏆 TOP 10 중요 변수")
+
+for i, row in importance_df.head(10).iterrows():
+    print(
+        f"{i+1}위: {row['Feature']} "
+        f"(중요도: {row['Importance']*100:.2f}%)"
+    )
+
+# =========================
+# 11. 최적화 데이터 생성
+# =========================
+
+optimized_df = pd.concat(
+    [
+        X[top_30_features].reset_index(drop=True),
+        y.reset_index(drop=True)
+    ],
+    axis=1
+)
+
+# 저장 경로
+optimized_csv_path = r"C:\Users\jiwoo\Desktop\optimized_data.csv"
+
+optimized_df.to_csv(
+    optimized_csv_path,
+    index=False
+)
+
+print("\n✅ 최적화 CSV 저장 완료")
+print(f"저장 위치: {optimized_csv_path}")
+
+# =========================
+# 12. 모델 저장
+# =========================
+
+model_path = r"C:\Users\jiwoo\Desktop\random_forest_model.pkl"
+
+joblib.dump(rf_model, model_path)
+
+print("✅ 모델 저장 완료")
+print(f"저장 위치: {model_path}")
+
+# =========================
+# 13. 샘플 예측 테스트
+# =========================
+
+sample = X_test.iloc[:5]
+
+sample_pred = rf_model.predict(sample)
+
+print("\n🔍 샘플 예측 결과")
+
+for i, pred in enumerate(sample_pred):
+
+    label = "악성코드" if pred == 1 else "정상"
+
+    print(f"샘플 {i+1}: {label}")
+
+print("\n🎉 전체 작업 완료!")
